@@ -181,10 +181,11 @@ begin_frame :: proc "contextless" (ctx: ^Context, display: Vec2, dt: f32) {
 	ctx.hot = 0
 	ctx.want_capture_mouse = ctx.active != 0
 	draw_reset(&ctx.draw, Rect{{0, 0}, display})
-	// Sol tık bırakıldıysa ve hâlâ active varsa temizle (item_behavior kaçırsa güvenlik ağı)
-	if !ctx.input.mouse_down[0] && ctx.active != 0 {
-		ctx.active = 0
-	}
+	// NOT: burada `!down && active != 0` iken `active`'i sıfırlayan bir
+	// güvenlik ağı VARDI; ancak bırakma karesinde item_behavior'dan ÖNCE
+	// çalışıp `pressed`'i kalıcı olarak yutuyordu (buton/checkbox/slider
+	// tıklaması hiç üretilemiyordu). `active`'in tek sahibi item_behavior'dır
+	// (bırakmada kendisi temizler), ağ kaldırıldı (2026-10-08).
 }
 
 end_frame :: proc "contextless" (ctx: ^Context) {
