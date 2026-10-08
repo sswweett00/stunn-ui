@@ -1,4 +1,4 @@
-// stunn_ui tek başına demo: motor/volt bağımlılığı yok. Yalnızca stunn + vendor:glfw + vendor:OpenGL.
+// stunn-ui tek başına demo: motor/volt bağımlılığı yok. Yalnızca stunn + vendor:glfw + vendor:OpenGL.
 package main
 
 import "core:fmt"
@@ -49,6 +49,7 @@ main :: proc() {
 	exposure: f32 = 1
 	intensity: f32 = 10
 	show_grid := true
+	use_light_theme := false
 	clicks := 0
 	last := glfw.GetTime()
 
@@ -63,7 +64,7 @@ main :: proc() {
 		stunn_gl.feed_input(&ctx, window)
 		stunn.begin_frame(&ctx, {f32(ww), f32(wh)}, dt)
 
-		if stunn.begin_window(&ctx, "Inspector", {{20, 20}, {380, 360}}) {
+		if stunn.begin_window(&ctx, "Inspector", {{20, 20}, {380, 420}}) {
 			stunn.labelf(&ctx, "Frame: %.2f ms", dt * 1000)
 			stunn.separator(&ctx)
 			stunn.drag_float3(&ctx, "Position", &position, 0.05)
@@ -72,6 +73,9 @@ main :: proc() {
 			stunn.drag_float(&ctx, "Intensity (log)", &intensity, 0.01, 0, 0, true)
 			stunn.slider_float(&ctx, "Slider", &exposure, 0.01, 16)
 			stunn.checkbox(&ctx, "Show grid", &show_grid)
+			if stunn.checkbox(&ctx, "Light theme", &use_light_theme) {
+				stunn.set_theme(&ctx, .Light if use_light_theme else .Dark)
+			}
 			if stunn.button(&ctx, "Click me") { clicks += 1 }
 			stunn.same_line(&ctx)
 			stunn.labelf(&ctx, "%d", clicks)
@@ -85,6 +89,9 @@ main :: proc() {
 		stunn.end_frame(&ctx)
 
 		gl.ClearColor(0.05, 0.05, 0.06, 1)
+		if use_light_theme {
+			gl.ClearColor(0.90, 0.90, 0.92, 1)
+		}
 		gl.Clear(gl.COLOR_BUFFER_BIT)
 		stunn_gl.render(&rend, &ctx, fw, fh)
 		glfw.SwapBuffers(window)
