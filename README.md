@@ -18,9 +18,10 @@ Yalnızca ham tiplerle (`^f32`, `^[3]f32`, `^bool`, `u32`) çalışır. Hiçbir 
 | **Tema** | Dark (varsayılan) + Light |
 | **Font** | Yerleşik 5×7 ASCII bitmap atlas (çalışma zamanında üretilir) |
 | **Çizim** | Batching, scissor clip stack, texture ID köprüsü |
-| **Gizmo** | 3B Translate / Rotate / Scale (vmath ile) |
-| **Backend** | OpenGL 4.6 Core + GLFW girdi köprüsü |
-| **Tahsisat** | Kare başına sıfır dinamik tahsisat (gizmo testleri ile doğrulanmış) |
+| **Gizmo** | 3B Translate / Rotate / Scale (`gizmo/` paketi, vmath ile) |
+| **Backend** | OpenGL 4.6 Core + GLFW girdi köprüsü (`backend_gl/`) + yazılımsal CPU rasterizer (`backend_sw/`) |
+| **Tahsisat** | Kare başına sıfır dinamik tahsisat (arena + sabit tamponlar; gizmo testleri ile doğrulanmış) |
+| **Freestanding** | `src/` + `backend_sw/` bağlamsızdır (`contextless`); bare-metal çekirdeklerde çalışır (aşağıya bakın) |
 
 ---
 
@@ -32,7 +33,9 @@ Yalnızca ham tiplerle (`^f32`, `^[3]f32`, `^bool`, `u32`) çalışır. Hiçbir 
 | **vmath** (kardeş dizin) | Gizmo + testler için | `../vmath` beklenir |
 | GLFW + OpenGL | Standalone demo için | `libglfw3-dev` (Linux) / sistem GLFW |
 
-> Gizmo kullanmayacaksanız yalnızca `src/` paketini motorunuza gömebilirsiniz; vmath gerekmez.
+> `gizmo/` paketi ayrıdır (`vmath` ister); çekirdek + yazılım backend için
+> yalnızca `src/` + `backend_sw/` yeterlidir — harici bağımlılık yoktur
+> (`core:math` dışında; `core:fmt`/`core:strings` kullanılmaz).
 
 ---
 
@@ -58,9 +61,17 @@ build.bat
 ```odin
 import stunn "path/to/stunn-ui/src"
 
+// Ana bilgisayar tahsisatı (bir kez, init öncesi): arena/bump modeli.
+my_heap: [8 * 1024 * 1024]u8
+my_heap_cur: uint
+my_alloc :: proc "contextless" (size, align: uint) -> rawptr {
+    // ...hizala, dilimle, yetmezse nil dön
+}
+
+stunn.heap_alloc_fn = my_alloc
+
 ctx: stunn.Context
 stunn.init(&ctx)
-defer stunn.destroy(&ctx)
 
 // Her kare:
 stunn.input_mouse_pos(&ctx, mouse)
@@ -74,7 +85,7 @@ if stunn.begin_window(&ctx, "Inspector", {{20, 20}, {320, 400}}) {
 }
 stunn.end_frame(&ctx)
 
-// Çizim komutlarını kendi renderer'ınıza gönderin (veya backend_gl kullanın)
+// Çizim komutlarını backend_gl, backend_sw veya kendi renderer'ınıza gönderin.
 ```
 
 ---

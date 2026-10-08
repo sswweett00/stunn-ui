@@ -1,8 +1,6 @@
 // stunn_ui - motor bağımsız, saf Odin immediate-mode GUI. Yalnızca ham tiplerle (^f32, ^[3]f32, ^bool, u32) çalışır.
 package stunn
 
-import "core:strings"
-
 Vec2  :: [2]f32
 Color :: [4]f32
 
@@ -32,7 +30,20 @@ hash_string :: proc "contextless" (s: string, seed: ID) -> ID {
 }
 
 // "Etiket##gizli_kimlik" biçiminde yalnızca görünen kısmı döner.
-label_text :: proc(label: string) -> string {
-	if i := strings.index(label, "##"); i >= 0 { return label[:i] }
+// (core:strings'e bağımlı olmamak için yerel arama; freestanding uyumu.)
+str_index :: proc "contextless" (s, sub: string) -> int {
+	if len(sub) == 0 || len(sub) > len(s) { return -1 }
+	for i in 0 ..< len(s) - len(sub) + 1 {
+		ok := true
+		for j in 0 ..< len(sub) {
+			if s[i + j] != sub[j] { ok = false; break }
+		}
+		if ok { return i }
+	}
+	return -1
+}
+
+label_text :: proc "contextless" (label: string) -> string {
+	if i := str_index(label, "##"); i >= 0 { return label[:i] }
 	return label
 }

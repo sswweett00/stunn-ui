@@ -46,7 +46,7 @@ FONT_5X7 := [95][5]u8{
 }
 
 // Atlası ctx.atlas içine yazar (R8). Bir kez, başlangıçta çağrılır.
-font_build_atlas :: proc(atlas: ^[ATLAS_W * ATLAS_H]u8) {
+font_build_atlas :: proc "contextless" (atlas: ^[ATLAS_W * ATLAS_H]u8) {
 	for i in 0 ..< 95 {
 		ox := (i % ATLAS_COLS) * ATLAS_CELL
 		oy := (i / ATLAS_COLS) * ATLAS_CELL

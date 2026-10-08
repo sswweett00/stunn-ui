@@ -33,9 +33,14 @@ mkdir -p build
 echo "==> odin check src"
 odin check src -no-entry-point -vet -strict-style $COL
 
+echo "==> odin check backend_sw"
+odin check backend_sw -no-entry-point -vet -strict-style $COL
+
 if [[ -n "$COL" ]]; then
-  echo "==> odin test src"
-  odin test src -vet -strict-style $COL -out:build/stunn_test
+  echo "==> odin check gizmo + test"
+  odin check gizmo -no-entry-point -vet -strict-style $COL
+  echo "==> odin test gizmo"
+  odin test gizmo -vet -strict-style $COL -out:build/stunn_test
 fi
 
 echo "==> odin check backend_gl"

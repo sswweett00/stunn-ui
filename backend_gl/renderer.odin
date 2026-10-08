@@ -87,7 +87,7 @@ destroy :: proc(r: ^Renderer) {
 // display: UI mantıksal boyutu; fb_w/fb_h: gerçek framebuffer piksel boyutu (HiDPI için).
 render :: proc(r: ^Renderer, ctx: ^stunn.Context, fb_w, fb_h: i32) {
 	b := &ctx.draw
-	if len(b.cmds) == 0 { return }
+	if b.cmds.count == 0 { return }
 
 	gl.Viewport(0, 0, fb_w, fb_h)
 	gl.Disable(gl.DEPTH_TEST)
@@ -96,21 +96,21 @@ render :: proc(r: ^Renderer, ctx: ^stunn.Context, fb_w, fb_h: i32) {
 	gl.BlendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
 	gl.Enable(gl.SCISSOR_TEST)
 
-	vbytes := len(b.vertices) * size_of(stunn.Draw_Vertex)
-	ibytes := len(b.indices) * size_of(u32)
+	vbytes := b.vertices.count * size_of(stunn.Draw_Vertex)
+	ibytes := b.indices.count * size_of(u32)
 	gl.BindVertexArray(r.vao)
 	gl.BindBuffer(gl.ARRAY_BUFFER, r.vbo)
 	if vbytes > r.vbo_bytes {
 		r.vbo_bytes = vbytes * 2
 		gl.BufferData(gl.ARRAY_BUFFER, r.vbo_bytes, nil, gl.STREAM_DRAW)
 	}
-	gl.BufferSubData(gl.ARRAY_BUFFER, 0, vbytes, raw_data(b.vertices))
+	gl.BufferSubData(gl.ARRAY_BUFFER, 0, vbytes, stunn.draw_vertex_data(b))
 	gl.BindBuffer(gl.ELEMENT_ARRAY_BUFFER, r.ebo)
 	if ibytes > r.ebo_bytes {
 		r.ebo_bytes = ibytes * 2
 		gl.BufferData(gl.ELEMENT_ARRAY_BUFFER, r.ebo_bytes, nil, gl.STREAM_DRAW)
 	}
-	gl.BufferSubData(gl.ELEMENT_ARRAY_BUFFER, 0, ibytes, raw_data(b.indices))
+	gl.BufferSubData(gl.ELEMENT_ARRAY_BUFFER, 0, ibytes, stunn.draw_index_data(b))
 
 	gl.UseProgram(r.program)
 	w, h := ctx.display.x, ctx.display.y
@@ -126,7 +126,8 @@ render :: proc(r: ^Renderer, ctx: ^stunn.Context, fb_w, fb_h: i32) {
 
 	sx := f32(fb_w) / w
 	sy := f32(fb_h) / h
-	for c in b.cmds {
+	for ci in 0 ..< b.cmds.count {
+		c := &b.cmds.data[ci]
 		if c.idx_count == 0 { continue }
 		x0 := i32(c.clip.min.x * sx)
 		y1 := i32(c.clip.max.y * sy)

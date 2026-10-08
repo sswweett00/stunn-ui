@@ -1,10 +1,11 @@
 // 3B viewport manipülatörleri (Translate / Rotate / Scale). Motor tiplerini bilmez:
 // yalnızca ham işaretçiler ([3]f32 konum/ölçek, [4]f32 kuaterniyon x,y,z,w) ve matrisler alır.
 // Fare seçimi ekran uzayı mesafesiyle, sürükleme matematiği vmath ışınlarıyla yapılır.
-package stunn
+package gizmo
 
 import "core:math"
 import vmath "vmath:src"
+import stunn "../src"
 
 Gizmo_Mode :: enum { Translate, Rotate, Scale }
 
@@ -38,19 +39,19 @@ Gizmo_Result :: struct {
 GIZMO_PICK_PX :: 10
 GIZMO_RING_SEGS :: 48
 
-gizmo_cancel :: proc(ctx: ^Context) { ctx.gizmo = {} }
+gizmo_cancel :: proc(st: ^Gizmo_State) { st^ = {} }
 
 @(private = "package")
-to_screen :: proc(r: Rect, vp: vmath.Mat4, p: vmath.Vec3) -> (s: Vec2, ok: bool) {
+to_screen :: proc(r: stunn.Rect, vp: vmath.Mat4, p: vmath.Vec3) -> (s: stunn.Vec2, ok: bool) {
 	c := vp * vmath.Vec4{p.x, p.y, p.z, 1}
 	if c.w < 1e-3 { return {}, false }
 	nx, ny := c.x / c.w, c.y / c.w
-	sz := rect_size(r)
+	sz := stunn.rect_size(r)
 	return {r.min.x + (nx * 0.5 + 0.5) * sz.x, r.min.y + (1 - (ny * 0.5 + 0.5)) * sz.y}, true
 }
 
 @(private = "file")
-dist_point_segment :: proc(p, a, b: Vec2) -> f32 {
+dist_point_segment :: proc(p, a, b: stunn.Vec2) -> f32 {
 	ab := b - a
 	t := clamp(((p.x - a.x) * ab.x + (p.y - a.y) * ab.y) / max(ab.x * ab.x + ab.y * ab.y, 1e-6), 0, 1)
 	q := a + ab * t
@@ -94,8 +95,9 @@ ring_drag_angle :: proc(origin, a: vmath.Vec3, r: vmath.Ray) -> (angle: f32, ok:
 	return ring_angle(origin, a, vmath.ray_at(r, t_ray)), true
 }
 
-gizmo :: proc(ctx: ^Context, mode: Gizmo_Mode, vp: Viewport_State, view, proj: vmath.Mat4, tg: Gizmo_Target) -> Gizmo_Result {
-	st := &ctx.gizmo
+// st: çağıranın sahip olduğu kalıcı durum (eskiden Context içindeydi;
+// bare-metal uyumu için dışarı taşındı).
+gizmo :: proc(ctx: ^stunn.Context, st: ^Gizmo_State, mode: Gizmo_Mode, vp: stunn.Viewport_State, view, proj: vmath.Mat4, tg: Gizmo_Target) -> Gizmo_Result {
 	res: Gizmo_Result
 	if vp.size.x < 2 || vp.size.y < 2 { return res }
 
@@ -192,30 +194,30 @@ gizmo :: proc(ctx: ^Context, mode: Gizmo_Mode, vp: Viewport_State, view, proj: v
 	res.dragging = st.active != 0
 
 	// ---- çizim
-	draw_push_clip(&ctx.draw, vp.rect)
-	base_cols := [3]Color{{0.92, 0.25, 0.25, 1}, {0.35, 0.85, 0.3, 1}, {0.3, 0.5, 1, 1}}
-	hl := Color{1, 0.9, 0.2, 1}
+	stunn.draw_push_clip(&ctx.draw, vp.rect)
+	base_cols := [3]stunn.Color{{0.92, 0.25, 0.25, 1}, {0.35, 0.85, 0.3, 1}, {0.3, 0.5, 1, 1}}
+	hl := stunn.Color{1, 0.9, 0.2, 1}
 	for i in 0 ..< 3 {
 		col := hl if (st.hot == i + 1 && st.active == 0) || st.active == i + 1 else base_cols[i]
 		if mode == .Rotate {
 			for k in 0 ..< GIZMO_RING_SEGS {
 				p0, ok0 := to_screen(vp.rect, view_proj, ring_point(origin, basis[i], s, k))
 				p1, ok1 := to_screen(vp.rect, view_proj, ring_point(origin, basis[i], s, k + 1))
-				if ok0 && ok1 { draw_line(ctx, p0, p1, 3, col) }
+				if ok0 && ok1 { stunn.draw_line(ctx, p0, p1, 3, col) }
 			}
 		} else {
 			p0, ok0 := to_screen(vp.rect, view_proj, origin)
 			p1, ok1 := to_screen(vp.rect, view_proj, origin + basis[i] * s)
 			if ok0 && ok1 {
-				draw_line(ctx, p0, p1, 3, col)
+				stunn.draw_line(ctx, p0, p1, 3, col)
 				h: f32 = 5 if mode == .Translate else 6
-				draw_rect(ctx, {p1 - {h, h}, p1 + {h, h}}, col)
+				stunn.draw_rect(ctx, {p1 - {h, h}, p1 + {h, h}}, col)
 			}
 		}
 	}
 	if c, ok := to_screen(vp.rect, view_proj, origin); ok {
-		draw_rect(ctx, {c - {3, 3}, c + {3, 3}}, {1, 1, 1, 1})
+		stunn.draw_rect(ctx, {c - {3, 3}, c + {3, 3}}, {1, 1, 1, 1})
 	}
-	draw_pop_clip(&ctx.draw)
+	stunn.draw_pop_clip(&ctx.draw)
 	return res
 }

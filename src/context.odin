@@ -1,6 +1,10 @@
 package stunn
 
-import "core:fmt"
+// NOT (freestanding uyarlaması): orijinal `core:fmt` + `core:math` yerine
+// yalnızca `core:math` (sqrt) kullanılır. `tprint`/`labelf` çıkarıldı —
+// sayılar köprüdeki arena-tahsisatsız biçimleyicilerle yazılır. `gizmo`
+// alanı yoktur (3B editör parçası gömülmedi).
+
 import "core:math"
 
 // ---------------------------------------------------------------- Girdi
@@ -14,14 +18,14 @@ Input :: struct {
 	mouse_pos_last:  Vec2,
 }
 
-input_mouse_pos    :: proc(ctx: ^Context, p: Vec2)            { ctx.input.mouse_pos = p }
-input_mouse_button :: proc(ctx: ^Context, b: int, down: bool) { if b >= 0 && b < 3 { ctx.input.mouse_down[b] = down } }
-input_scroll       :: proc(ctx: ^Context, s: Vec2)            { ctx.input.scroll = s }
-input_modifiers    :: proc(ctx: ^Context, shift, ctrl: bool)  { ctx.input.shift = shift; ctx.input.ctrl = ctrl }
+input_mouse_pos    :: proc "contextless" (ctx: ^Context, p: Vec2)            { ctx.input.mouse_pos = p }
+input_mouse_button :: proc "contextless" (ctx: ^Context, b: int, down: bool) { if b >= 0 && b < 3 { ctx.input.mouse_down[b] = down } }
+input_scroll       :: proc "contextless" (ctx: ^Context, s: Vec2)            { ctx.input.scroll = s }
+input_modifiers    :: proc "contextless" (ctx: ^Context, shift, ctrl: bool)  { ctx.input.shift = shift; ctx.input.ctrl = ctrl }
 
-mouse_down     :: #force_inline proc(ctx: ^Context, b: int) -> bool { return ctx.input.mouse_down[b] }
-mouse_pressed  :: #force_inline proc(ctx: ^Context, b: int) -> bool { return ctx.input.mouse_down[b] && !ctx.input.mouse_down_prev[b] }
-mouse_released :: #force_inline proc(ctx: ^Context, b: int) -> bool { return !ctx.input.mouse_down[b] && ctx.input.mouse_down_prev[b] }
+mouse_down     :: #force_inline proc "contextless" (ctx: ^Context, b: int) -> bool { return ctx.input.mouse_down[b] }
+mouse_pressed  :: #force_inline proc "contextless" (ctx: ^Context, b: int) -> bool { return ctx.input.mouse_down[b] && !ctx.input.mouse_down_prev[b] }
+mouse_released :: #force_inline proc "contextless" (ctx: ^Context, b: int) -> bool { return !ctx.input.mouse_down[b] && ctx.input.mouse_down_prev[b] }
 
 // ---------------------------------------------------------------- Storage (ID tabanlı kalıcı önbellek)
 // Sabit boyutlu açık adresli hash tablosu: pencere konumu/boyutu vb. kalıcı durum. Tahsisat yok.
@@ -37,7 +41,7 @@ Storage :: struct {
 	count:   int,
 }
 
-storage_find :: proc(s: ^Storage, key: ID) -> ^Storage_Entry {
+storage_find :: proc "contextless" (s: ^Storage, key: ID) -> ^Storage_Entry {
 	i := int(u32(key)) & (STORAGE_CAP - 1)
 	for _ in 0 ..< STORAGE_CAP {
 		e := &s.entries[i]
@@ -47,12 +51,12 @@ storage_find :: proc(s: ^Storage, key: ID) -> ^Storage_Entry {
 	return nil
 }
 
-storage_get :: proc(s: ^Storage, key: ID, default: [4]f32) -> [4]f32 {
+storage_get :: proc "contextless" (s: ^Storage, key: ID, default: [4]f32) -> [4]f32 {
 	if e := storage_find(s, key); e != nil && e.key == key { return e.value }
 	return default
 }
 
-storage_set :: proc(s: ^Storage, key: ID, v: [4]f32) {
+storage_set :: proc "contextless" (s: ^Storage, key: ID, v: [4]f32) {
 	e := storage_find(s, key)
 	if e == nil { return }
 	if e.key == 0 { e.key = key; s.count += 1 }
@@ -81,7 +85,7 @@ Style :: struct {
 	border:        Color,
 }
 
-style_dark :: proc() -> Style {
+style_dark :: proc "contextless" () -> Style {
 	return {
 		font_scale = 2, padding = 6, spacing = 4, title_h_extra = 6,
 		window_bg     = {0.11, 0.115, 0.13, 0.97},
@@ -96,7 +100,7 @@ style_dark :: proc() -> Style {
 	}
 }
 
-style_light :: proc() -> Style {
+style_light :: proc "contextless" () -> Style {
 	return {
 		font_scale = 2, padding = 6, spacing = 4, title_h_extra = 6,
 		window_bg     = {0.94, 0.94, 0.96, 0.98},
@@ -111,7 +115,7 @@ style_light :: proc() -> Style {
 	}
 }
 
-style_for_theme :: proc(t: Theme) -> Style {
+style_for_theme :: proc "contextless" (t: Theme) -> Style {
 	switch t {
 	case .Light: return style_light()
 	case .Dark:  return style_dark()
@@ -119,9 +123,9 @@ style_for_theme :: proc(t: Theme) -> Style {
 	return style_dark()
 }
 
-style_default :: proc() -> Style { return style_dark() }
+style_default :: proc "contextless" () -> Style { return style_dark() }
 
-set_theme :: proc(ctx: ^Context, t: Theme) {
+set_theme :: proc "contextless" (ctx: ^Context, t: Theme) {
 	ctx.style = style_for_theme(t)
 }
 
@@ -147,7 +151,7 @@ Context :: struct {
 	storage: Storage,
 	atlas:   [ATLAS_W * ATLAS_H]u8,
 
-	id_stack: [dynamic]ID,
+	id_stack: ABuf(ID),
 	hot, active: ID,
 	display: Vec2,
 	dt:      f32,
@@ -158,28 +162,21 @@ Context :: struct {
 
 	// Host için: UI fareyi tüketiyor mu? (pencere üstünde veya bir widget aktif)
 	want_capture_mouse: bool,
-
-	gizmo: Gizmo_State,
 }
 
-init :: proc(ctx: ^Context, allocator := context.allocator) {
+init :: proc "contextless" (ctx: ^Context) {
 	ctx.style = style_default()
-	draw_init(&ctx.draw, allocator = allocator)
-	ctx.id_stack = make([dynamic]ID, 0, 64, allocator)
+	draw_init(&ctx.draw, 1 << 16, 1 << 17, 512)
+	abuf_init(&ctx.id_stack, 64)
 	font_build_atlas(&ctx.atlas)
 }
 
-destroy :: proc(ctx: ^Context) {
-	draw_destroy(&ctx.draw)
-	delete(ctx.id_stack)
-}
-
-begin_frame :: proc(ctx: ^Context, display: Vec2, dt: f32) {
+begin_frame :: proc "contextless" (ctx: ^Context, display: Vec2, dt: f32) {
 	ctx.display = display
 	ctx.dt = dt
 	ctx.frame += 1
 	ctx.input.mouse_delta = ctx.input.mouse_pos - ctx.input.mouse_pos_last
-	clear(&ctx.id_stack)
+	abuf_clear(&ctx.id_stack)
 	ctx.panel_count = 0
 	ctx.hot = 0
 	ctx.want_capture_mouse = ctx.active != 0
@@ -190,49 +187,49 @@ begin_frame :: proc(ctx: ^Context, display: Vec2, dt: f32) {
 	}
 }
 
-end_frame :: proc(ctx: ^Context) {
+end_frame :: proc "contextless" (ctx: ^Context) {
 	ctx.input.mouse_down_prev = ctx.input.mouse_down
 	ctx.input.mouse_pos_last = ctx.input.mouse_pos
 	ctx.input.scroll = {}
 }
 
 // ---------------------------------------------------------------- ID stack
-current_id :: proc(ctx: ^Context) -> ID {
-	if n := len(ctx.id_stack); n > 0 { return ctx.id_stack[n - 1] }
+current_id :: proc "contextless" (ctx: ^Context) -> ID {
+	if ctx.id_stack.count > 0 { return ctx.id_stack.data[ctx.id_stack.count - 1] }
 	return 0
 }
-get_id :: proc(ctx: ^Context, s: string) -> ID { return hash_string(s, current_id(ctx)) }
-push_id :: proc(ctx: ^Context, s: string) { append(&ctx.id_stack, get_id(ctx, s)) }
-push_id_int :: proc(ctx: ^Context, n: int) {
-	append(&ctx.id_stack, ID(u32(current_id(ctx)) * 16777619 ~ u32(n) + 0x9E3779B9))
+get_id :: proc "contextless" (ctx: ^Context, s: string) -> ID { return hash_string(s, current_id(ctx)) }
+push_id :: proc "contextless" (ctx: ^Context, s: string) { abuf_push(&ctx.id_stack, get_id(ctx, s)) }
+push_id_int :: proc "contextless" (ctx: ^Context, n: int) {
+	abuf_push(&ctx.id_stack, ID(u32(current_id(ctx)) * 16777619 ~ u32(n) + 0x9E3779B9))
 }
-pop_id :: proc(ctx: ^Context) { if len(ctx.id_stack) > 0 { pop(&ctx.id_stack) } }
+pop_id :: proc "contextless" (ctx: ^Context) { abuf_pop(&ctx.id_stack) }
 
 // ---------------------------------------------------------------- Çizim yardımcıları
-text_height :: proc(ctx: ^Context) -> f32 { return 8 * ctx.style.font_scale }
+text_height :: proc "contextless" (ctx: ^Context) -> f32 { return 8 * ctx.style.font_scale }
 
 // text_width: draw_text ile aynı hücre ilerlemesini kullanır (karakter, bayt değil) —
 // aksi halde çok baytlı metinler yanlış hizalanır/ortalanmaz.
-text_width :: proc(ctx: ^Context, s: string) -> f32 {
+text_width :: proc "contextless" (ctx: ^Context, s: string) -> f32 {
 	n := 0
 	for _ in s { n += 1 }
 	return f32(n) * 6 * ctx.style.font_scale
 }
 
-draw_rect :: proc(ctx: ^Context, r: Rect, col: Color) {
+draw_rect :: proc "contextless" (ctx: ^Context, r: Rect, col: Color) {
 	cx := f32((SOLID_CELL % ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2) / ATLAS_W
 	cy := f32((SOLID_CELL / ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2) / ATLAS_H
 	draw_quad_uv(&ctx.draw, r, {cx, cy}, {cx, cy}, col, 0)
 }
 
-solid_uv :: proc() -> Vec2 {
+solid_uv :: proc "contextless" () -> Vec2 {
 	return {
 		f32((SOLID_CELL % ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2) / ATLAS_W,
 		f32((SOLID_CELL / ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2) / ATLAS_H,
 	}
 }
 
-draw_line :: proc(ctx: ^Context, a, b: Vec2, thickness: f32, col: Color) {
+draw_line :: proc "contextless" (ctx: ^Context, a, b: Vec2, thickness: f32, col: Color) {
 	d := b - a
 	l := math.sqrt(d.x * d.x + d.y * d.y)
 	if l < 1e-4 { return }
@@ -240,7 +237,7 @@ draw_line :: proc(ctx: ^Context, a, b: Vec2, thickness: f32, col: Color) {
 	draw_quad_points(&ctx.draw, {a - n, b - n, b + n, a + n}, solid_uv(), col, 0)
 }
 
-draw_rect_outline :: proc(ctx: ^Context, r: Rect, col: Color, t: f32 = 1) {
+draw_rect_outline :: proc "contextless" (ctx: ^Context, r: Rect, col: Color, t: f32 = 1) {
 	draw_rect(ctx, {r.min, {r.max.x, r.min.y + t}}, col)
 	draw_rect(ctx, {{r.min.x, r.max.y - t}, r.max}, col)
 	draw_rect(ctx, {{r.min.x, r.min.y + t}, {r.min.x + t, r.max.y - t}}, col)
@@ -252,7 +249,7 @@ draw_rect_outline :: proc(ctx: ^Context, r: Rect, col: Color, t: f32 = 1) {
 // Dize RUNE (UTF-8 karakter) bazında ilerletilir. Bayt bazında ilerletildiğinde çok
 // baytlı her karakter iki ayrı '?' olarak basılır ve hücre genişliği iki katına çıkar;
 // model çıktısı ve Türkçe arayüz metinleri bu yüzden bozuk görünür ve hizalama kayar.
-draw_text :: proc(ctx: ^Context, pos: Vec2, s: string, col: Color) {
+draw_text :: proc "contextless" (ctx: ^Context, pos: Vec2, s: string, col: Color) {
 	sc := ctx.style.font_scale
 	x := pos.x
 	for ch in s {
@@ -269,15 +266,15 @@ draw_text :: proc(ctx: ^Context, pos: Vec2, s: string, col: Color) {
 	}
 }
 
-draw_image :: proc(ctx: ^Context, r: Rect, tex: Texture_ID, uv0, uv1: Vec2, tint := Color{1, 1, 1, 1}) {
+draw_image :: proc "contextless" (ctx: ^Context, r: Rect, tex: Texture_ID, uv0, uv1: Vec2, tint := Color{1, 1, 1, 1}) {
 	draw_quad_uv(&ctx.draw, r, uv0, uv1, tint, tex)
 }
 
 // ---------------------------------------------------------------- Yerleşim (auto-layout)
-panel_cur :: proc(ctx: ^Context) -> ^Panel { return &ctx.panels[ctx.panel_count - 1] }
+panel_cur :: proc "contextless" (ctx: ^Context) -> ^Panel { return &ctx.panels[ctx.panel_count - 1] }
 
 // size.x <= 0: kalan genişliği doldur. size.y <= 0: kalan yüksekliği doldur.
-layout_next :: proc(ctx: ^Context, size: Vec2) -> Rect {
+layout_next :: proc "contextless" (ctx: ^Context, size: Vec2) -> Rect {
 	p := panel_cur(ctx)
 	if !p.continuing { p.line_start_y = p.cursor.y; p.line_h = 0 }
 	w := size.x if size.x > 0 else max(p.content_max_x - p.cursor.x, 8)
@@ -291,20 +288,20 @@ layout_next :: proc(ctx: ^Context, size: Vec2) -> Rect {
 }
 
 // Sonraki widget'ı önceki ile aynı satıra koyar.
-same_line :: proc(ctx: ^Context) {
+same_line :: proc "contextless" (ctx: ^Context) {
 	p := panel_cur(ctx)
 	p.cursor = {p.last_rect.max.x + ctx.style.spacing, p.line_start_y}
 	p.continuing = true
 }
 
-avail_width :: proc(ctx: ^Context) -> f32 {
+avail_width :: proc "contextless" (ctx: ^Context) -> f32 {
 	p := panel_cur(ctx)
 	return p.content_max_x - p.cursor.x
 }
 
 // ---------------------------------------------------------------- Etkileşim
 // hovered: fare öğenin (kırpılmış) alanında; held: basılı tutuluyor; pressed: bu karede bırakıldı.
-item_behavior :: proc(ctx: ^Context, id: ID, r: Rect) -> (hovered, held, pressed: bool) {
+item_behavior :: proc "contextless" (ctx: ^Context, id: ID, r: Rect) -> (hovered, held, pressed: bool) {
 	visible := rect_intersect(r, draw_clip_current(&ctx.draw))
 	hovered = rect_contains(visible, ctx.input.mouse_pos) && (ctx.active == 0 || ctx.active == id)
 	if hovered { ctx.hot = id }
@@ -320,10 +317,10 @@ item_behavior :: proc(ctx: ^Context, id: ID, r: Rect) -> (hovered, held, pressed
 }
 
 // ---------------------------------------------------------------- Pencere
-begin_window :: proc(ctx: ^Context, title: string, default_rect: Rect) -> bool {
+begin_window :: proc "contextless" (ctx: ^Context, title: string, default_rect: Rect) -> bool {
 	if ctx.panel_count >= MAX_PANELS { return false }
 	id := get_id(ctx, title)
-	append(&ctx.id_stack, id)
+	abuf_push(&ctx.id_stack, id)
 
 	def_pos  := default_rect.min
 	def_size := rect_size(default_rect)
@@ -365,12 +362,9 @@ begin_window :: proc(ctx: ^Context, title: string, default_rect: Rect) -> bool {
 	return true
 }
 
-end_window :: proc(ctx: ^Context) {
+end_window :: proc "contextless" (ctx: ^Context) {
 	if ctx.panel_count == 0 { return }
 	ctx.panel_count -= 1
 	draw_pop_clip(&ctx.draw)
 	pop_id(ctx)
 }
-
-// fmt.tprintf: context.temp_allocator kullanır; kare sonunda free_all ile boşaltılır.
-tprint :: proc(format: string, args: ..any) -> string { return fmt.tprintf(format, ..args) }

@@ -7,6 +7,20 @@ import glfw "vendor:glfw"
 import stunn "../src"
 import stunn_gl "../backend_gl"
 
+// Demo tahsisatı: statik bump (arena modeli; free yok, karede sayaç
+// sıfırlanmaz — tamponlar init'te tam kapasite ayrılır).
+demo_heap: [8 * 1024 * 1024]u8
+demo_heap_cur: uint
+
+demo_heap_alloc :: proc "contextless" (size, align: uint) -> rawptr {
+	a := align
+	if a < 1 { a = 1 }
+	p := (demo_heap_cur + a - 1) & ~(a - 1)
+	if p + size > uint(len(demo_heap)) { return nil }
+	demo_heap_cur = p + size
+	return rawptr(&demo_heap[p])
+}
+
 main :: proc() {
 	if !glfw.Init() { fmt.eprintln("glfw init başarısız"); return }
 	defer glfw.Terminate()
@@ -21,8 +35,8 @@ main :: proc() {
 	gl.load_up_to(4, 6, glfw.gl_set_proc_address)
 
 	ctx: stunn.Context
+	stunn.heap_alloc_fn = demo_heap_alloc
 	stunn.init(&ctx)
-	defer stunn.destroy(&ctx)
 	rend: stunn_gl.Renderer
 	if !stunn_gl.init(&rend, &ctx) { return }
 	defer stunn_gl.destroy(&rend)
@@ -65,7 +79,7 @@ main :: proc() {
 		stunn.begin_frame(&ctx, {f32(ww), f32(wh)}, dt)
 
 		if stunn.begin_window(&ctx, "Inspector", {{20, 20}, {380, 420}}) {
-			stunn.labelf(&ctx, "Frame: %.2f ms", dt * 1000)
+			stunn.label(&ctx, fmt.tprintf("Frame: %.2f ms", dt * 1000))
 			stunn.separator(&ctx)
 			stunn.drag_float3(&ctx, "Position", &position, 0.05)
 			stunn.drag_float3(&ctx, "Scale", &scale, 0.01, 0.01, 100)
@@ -78,7 +92,7 @@ main :: proc() {
 			}
 			if stunn.button(&ctx, "Click me") { clicks += 1 }
 			stunn.same_line(&ctx)
-			stunn.labelf(&ctx, "%d", clicks)
+			stunn.label(&ctx, fmt.tprintf("%d", clicks))
 			stunn.end_window(&ctx)
 		}
 		if stunn.begin_window(&ctx, "Viewport", {{420, 20}, {500, 400}}) {

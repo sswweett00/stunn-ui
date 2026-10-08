@@ -15,69 +15,90 @@ Draw_Cmd :: struct {
 }
 
 Draw_Command_Buffer :: struct {
-	vertices:   [dynamic]Draw_Vertex,
-	indices:    [dynamic]u32,
-	cmds:       [dynamic]Draw_Cmd,
-	clip_stack: [dynamic]Rect,
+	vertices:   ABuf(Draw_Vertex),
+	indices:    ABuf(u32),
+	cmds:       ABuf(Draw_Cmd),
+	clip_stack: ABuf(Rect),
 }
 
-// Kapasiteler başlangıçta ayrılır; kare başına yalnızca clear() yapılır (yeniden tahsis yok).
-draw_init :: proc(b: ^Draw_Command_Buffer, vert_cap := 1 << 16, idx_cap := 1 << 17, cmd_cap := 512, allocator := context.allocator) {
-	b.vertices   = make([dynamic]Draw_Vertex, 0, vert_cap, allocator)
-	b.indices    = make([dynamic]u32, 0, idx_cap, allocator)
-	b.cmds       = make([dynamic]Draw_Cmd, 0, cmd_cap, allocator)
-	b.clip_stack = make([dynamic]Rect, 0, 64, allocator)
+// Kapasiteler başlangıçta arenadan ayrılır; kare başına yalnızca sayaç
+// sıfırlanır (yeniden tahsis yok).
+draw_init :: proc "contextless" (b: ^Draw_Command_Buffer, vert_cap, idx_cap, cmd_cap: int) {
+	abuf_init(&b.vertices, vert_cap)
+	abuf_init(&b.indices, idx_cap)
+	abuf_init(&b.cmds, cmd_cap)
+	abuf_init(&b.clip_stack, 64)
 }
 
-draw_destroy :: proc(b: ^Draw_Command_Buffer) {
-	delete(b.vertices); delete(b.indices); delete(b.cmds); delete(b.clip_stack)
+draw_reset :: proc "contextless" (b: ^Draw_Command_Buffer, full: Rect) {
+	abuf_clear(&b.vertices)
+	abuf_clear(&b.indices)
+	abuf_clear(&b.cmds)
+	abuf_clear(&b.clip_stack)
+	abuf_push(&b.clip_stack, full)
 }
 
-draw_reset :: proc(b: ^Draw_Command_Buffer, full: Rect) {
-	clear(&b.vertices); clear(&b.indices); clear(&b.cmds); clear(&b.clip_stack)
-	append(&b.clip_stack, full)
+draw_clip_current :: #force_inline proc "contextless" (b: ^Draw_Command_Buffer) -> Rect {
+	return abuf_last(&b.clip_stack)
 }
 
-draw_clip_current :: #force_inline proc(b: ^Draw_Command_Buffer) -> Rect { return b.clip_stack[len(b.clip_stack) - 1] }
-
-draw_push_clip :: proc(b: ^Draw_Command_Buffer, r: Rect) {
-	append(&b.clip_stack, rect_intersect(draw_clip_current(b), r))
+draw_push_clip :: proc "contextless" (b: ^Draw_Command_Buffer, r: Rect) {
+	abuf_push(&b.clip_stack, rect_intersect(draw_clip_current(b), r))
 }
 
-draw_pop_clip :: proc(b: ^Draw_Command_Buffer) {
-	if len(b.clip_stack) > 1 { pop(&b.clip_stack) }
+draw_pop_clip :: proc "contextless" (b: ^Draw_Command_Buffer) {
+	if b.clip_stack.count > 1 { abuf_pop(&b.clip_stack) }
 }
 
-draw_quad_uv :: proc(b: ^Draw_Command_Buffer, r: Rect, uv0, uv1: Vec2, col: Color, tex: Texture_ID) {
+// Backend'ler için ham veri erişimi (nil-güvenli).
+draw_vertex_data :: proc "contextless" (b: ^Draw_Command_Buffer) -> rawptr {
+	if b.vertices.count <= 0 { return nil }
+	return rawptr(b.vertices.data)
+}
+
+draw_index_data :: proc "contextless" (b: ^Draw_Command_Buffer) -> rawptr {
+	if b.indices.count <= 0 { return nil }
+	return rawptr(b.indices.data)
+}
+
+draw_quad_uv :: proc "contextless" (b: ^Draw_Command_Buffer, r: Rect, uv0, uv1: Vec2, col: Color, tex: Texture_ID) {
 	clip := draw_clip_current(b)
-	n := len(b.cmds)
-	if n == 0 || b.cmds[n - 1].texture != tex || b.cmds[n - 1].clip != clip {
-		append(&b.cmds, Draw_Cmd{clip = clip, texture = tex, idx_offset = u32(len(b.indices))})
+	n := b.cmds.count
+	if n == 0 || b.cmds.data[n - 1].texture != tex || b.cmds.data[n - 1].clip != clip {
+		abuf_push(&b.cmds, Draw_Cmd{clip = clip, texture = tex, idx_offset = u32(b.indices.count)})
 		n += 1
 	}
-	base := u32(len(b.vertices))
-	append(&b.vertices,
-		Draw_Vertex{{r.min.x, r.min.y, 0}, {uv0.x, uv0.y}, col},
-		Draw_Vertex{{r.max.x, r.min.y, 0}, {uv1.x, uv0.y}, col},
-		Draw_Vertex{{r.max.x, r.max.y, 0}, {uv1.x, uv1.y}, col},
-		Draw_Vertex{{r.min.x, r.max.y, 0}, {uv0.x, uv1.y}, col},
-	)
-	append(&b.indices, base, base + 1, base + 2, base, base + 2, base + 3)
-	b.cmds[n - 1].idx_count += 6
+	base := u32(b.vertices.count)
+	abuf_push(&b.vertices, Draw_Vertex{{r.min.x, r.min.y, 0}, {uv0.x, uv0.y}, col})
+	abuf_push(&b.vertices, Draw_Vertex{{r.max.x, r.min.y, 0}, {uv1.x, uv0.y}, col})
+	abuf_push(&b.vertices, Draw_Vertex{{r.max.x, r.max.y, 0}, {uv1.x, uv1.y}, col})
+	abuf_push(&b.vertices, Draw_Vertex{{r.min.x, r.max.y, 0}, {uv0.x, uv1.y}, col})
+	abuf_push(&b.indices, base)
+	abuf_push(&b.indices, base + 1)
+	abuf_push(&b.indices, base + 2)
+	abuf_push(&b.indices, base)
+	abuf_push(&b.indices, base + 2)
+	abuf_push(&b.indices, base + 3)
+	b.cmds.data[n - 1].idx_count += 6
 }
 
-// Keyfi dörtgen (döndürülmüş çizgiler, gizmo vb.). Köşeler saat yönünde/tersinde verilebilir.
-draw_quad_points :: proc(b: ^Draw_Command_Buffer, p: [4]Vec2, uv: Vec2, col: Color, tex: Texture_ID) {
+// Keyfi dörtgen (döndürülmüş çizgiler vb.). Köşeler saat yönünde/tersinde verilebilir.
+draw_quad_points :: proc "contextless" (b: ^Draw_Command_Buffer, p: [4]Vec2, uv: Vec2, col: Color, tex: Texture_ID) {
 	clip := draw_clip_current(b)
-	n := len(b.cmds)
-	if n == 0 || b.cmds[n - 1].texture != tex || b.cmds[n - 1].clip != clip {
-		append(&b.cmds, Draw_Cmd{clip = clip, texture = tex, idx_offset = u32(len(b.indices))})
+	n := b.cmds.count
+	if n == 0 || b.cmds.data[n - 1].texture != tex || b.cmds.data[n - 1].clip != clip {
+		abuf_push(&b.cmds, Draw_Cmd{clip = clip, texture = tex, idx_offset = u32(b.indices.count)})
 		n += 1
 	}
-	base := u32(len(b.vertices))
+	base := u32(b.vertices.count)
 	for i in 0 ..< 4 {
-		append(&b.vertices, Draw_Vertex{{p[i].x, p[i].y, 0}, {uv.x, uv.y}, col})
+		abuf_push(&b.vertices, Draw_Vertex{{p[i].x, p[i].y, 0}, {uv.x, uv.y}, col})
 	}
-	append(&b.indices, base, base + 1, base + 2, base, base + 2, base + 3)
-	b.cmds[n - 1].idx_count += 6
+	abuf_push(&b.indices, base)
+	abuf_push(&b.indices, base + 1)
+	abuf_push(&b.indices, base + 2)
+	abuf_push(&b.indices, base)
+	abuf_push(&b.indices, base + 2)
+	abuf_push(&b.indices, base + 3)
+	b.cmds.data[n - 1].idx_count += 6
 }
