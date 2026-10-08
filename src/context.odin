@@ -11,13 +11,13 @@ Input :: struct {
 	mouse_down:      [3]bool, // 0 sol, 1 sağ, 2 orta
 	mouse_down_prev: [3]bool,
 	shift, ctrl:     bool,
-	mouse_pos_last: Vec2,
+	mouse_pos_last:  Vec2,
 }
 
-input_mouse_pos    :: proc(ctx: ^Context, p: Vec2)              { ctx.input.mouse_pos = p }
-input_mouse_button :: proc(ctx: ^Context, b: int, down: bool)   { if b >= 0 && b < 3 { ctx.input.mouse_down[b] = down } }
-input_scroll       :: proc(ctx: ^Context, s: Vec2)              { ctx.input.scroll = s }
-input_modifiers    :: proc(ctx: ^Context, shift, ctrl: bool)    { ctx.input.shift = shift; ctx.input.ctrl = ctrl }
+input_mouse_pos    :: proc(ctx: ^Context, p: Vec2)            { ctx.input.mouse_pos = p }
+input_mouse_button :: proc(ctx: ^Context, b: int, down: bool) { if b >= 0 && b < 3 { ctx.input.mouse_down[b] = down } }
+input_scroll       :: proc(ctx: ^Context, s: Vec2)            { ctx.input.scroll = s }
+input_modifiers    :: proc(ctx: ^Context, shift, ctrl: bool)  { ctx.input.shift = shift; ctx.input.ctrl = ctrl }
 
 mouse_down     :: #force_inline proc(ctx: ^Context, b: int) -> bool { return ctx.input.mouse_down[b] }
 mouse_pressed  :: #force_inline proc(ctx: ^Context, b: int) -> bool { return ctx.input.mouse_down[b] && !ctx.input.mouse_down_prev[b] }
@@ -60,66 +60,28 @@ storage_set :: proc(s: ^Storage, key: ID, v: [4]f32) {
 }
 
 // ---------------------------------------------------------------- Stil
-/// Theme enumeration
 Theme :: enum {
-    Light,
-    Dark,
+	Dark,
+	Light,
 }
 
 Style :: struct {
-    font_scale:     f32,
-    padding:        f32,
-    spacing:        f32,
-    title_h_extra:  f32,
-    window_bg:      Color,
-    title_bg:       Color,
-    title_text:     Color,
-    text:           Color,
-    widget_bg:      Color,
-    widget_hot:     Color,
-    widget_active:  Color,
-    accent:         Color,
-    border:         Color,
-}
-
-style_light :: proc() -> Style {
-    return {
-        font_scale = 2, padding = 6, spacing = 4, title_h_extra = 6,
-        window_bg     = {0.11, 0.115, 0.13, 0.97},
-        title_bg      = {0.17, 0.18, 0.22, 1},
-        title_text    = {0.92, 0.94, 1, 1},
-        text          = {0.86, 0.88, 0.92, 1},
-        widget_bg     = {0.20, 0.21, 0.25, 1},
-        widget_hot    = {0.27, 0.29, 0.35, 1},
-        widget_active = {0.33, 0.45, 0.75, 1},
-        accent        = {0.36, 0.55, 0.95, 1},
-        border        = {0.05, 0.05, 0.06, 1},
-    }
+	font_scale:    f32,
+	padding:       f32,
+	spacing:       f32,
+	title_h_extra: f32,
+	window_bg:     Color,
+	title_bg:      Color,
+	title_text:    Color,
+	text:          Color,
+	widget_bg:     Color,
+	widget_hot:    Color,
+	widget_active: Color,
+	accent:        Color,
+	border:        Color,
 }
 
 style_dark :: proc() -> Style {
-    return {
-        font_scale = 2, padding = 6, spacing = 4, title_h_extra = 6,
-        window_bg     = {0.08, 0.08, 0.1, 0.97},
-        title_bg      = {0.12, 0.12, 0.15, 1},
-        title_text    = {0.9, 0.9, 0.95, 1},
-        text          = {0.8, 0.8, 0.85, 1},
-        widget_bg     = {0.15, 0.15, 0.2, 1},
-        widget_hot    = {0.25, 0.25, 0.35, 1},
-        widget_active = {0.4, 0.5, 0.7, 1},
-        accent        = {0.5, 0.7, 0.9, 1},
-        border        = {0.07, 0.07, 0.08, 1},
-    }
-}
-
-style_for_theme :: proc(t: Theme) -> Style {
-    if t == Theme.Dark {
-        return style_dark()
-    }
-    return style_light()
-}
-
-style_default :: proc() -> Style {
 	return {
 		font_scale = 2, padding = 6, spacing = 4, title_h_extra = 6,
 		window_bg     = {0.11, 0.115, 0.13, 0.97},
@@ -134,33 +96,62 @@ style_default :: proc() -> Style {
 	}
 }
 
+style_light :: proc() -> Style {
+	return {
+		font_scale = 2, padding = 6, spacing = 4, title_h_extra = 6,
+		window_bg     = {0.94, 0.94, 0.96, 0.98},
+		title_bg      = {0.86, 0.87, 0.90, 1},
+		title_text    = {0.12, 0.13, 0.16, 1},
+		text          = {0.18, 0.19, 0.22, 1},
+		widget_bg     = {0.88, 0.89, 0.92, 1},
+		widget_hot    = {0.78, 0.82, 0.92, 1},
+		widget_active = {0.45, 0.58, 0.88, 1},
+		accent        = {0.28, 0.48, 0.90, 1},
+		border        = {0.70, 0.71, 0.74, 1},
+	}
+}
+
+style_for_theme :: proc(t: Theme) -> Style {
+	switch t {
+	case .Light: return style_light()
+	case .Dark:  return style_dark()
+	}
+	return style_dark()
+}
+
+style_default :: proc() -> Style { return style_dark() }
+
+set_theme :: proc(ctx: ^Context, t: Theme) {
+	ctx.style = style_for_theme(t)
+}
+
 // ---------------------------------------------------------------- Bağlam
 Panel :: struct {
-	id:           ID,
-	rect:         Rect,
-	content_min:  Vec2,
+	id:            ID,
+	rect:          Rect,
+	content_min:   Vec2,
 	content_max_x: f32,
-	cursor:       Vec2,
-	line_start_y: f32,
-	line_h:       f32,
-	continuing:   bool,
-	last_rect:    Rect,
+	cursor:        Vec2,
+	line_start_y:  f32,
+	line_h:        f32,
+	continuing:    bool,
+	last_rect:     Rect,
 }
 
 MAX_PANELS :: 16
 
 Context :: struct {
-	input:    Input,
-	style:    Style,
-	draw:     Draw_Command_Buffer,
-	storage:  Storage,
-	atlas:    [ATLAS_W * ATLAS_H]u8,
+	input:   Input,
+	style:   Style,
+	draw:    Draw_Command_Buffer,
+	storage: Storage,
+	atlas:   [ATLAS_W * ATLAS_H]u8,
 
 	id_stack: [dynamic]ID,
 	hot, active: ID,
-	display:  Vec2,
-	dt:       f32,
-	frame:    u64,
+	display: Vec2,
+	dt:      f32,
+	frame:   u64,
 
 	panels:      [MAX_PANELS]Panel,
 	panel_count: int,
@@ -190,9 +181,13 @@ begin_frame :: proc(ctx: ^Context, display: Vec2, dt: f32) {
 	ctx.input.mouse_delta = ctx.input.mouse_pos - ctx.input.mouse_pos_last
 	clear(&ctx.id_stack)
 	ctx.panel_count = 0
+	ctx.hot = 0
 	ctx.want_capture_mouse = ctx.active != 0
 	draw_reset(&ctx.draw, Rect{{0, 0}, display})
-	if !ctx.input.mouse_down[0] && ctx.active != 0 && !ctx.input.mouse_down_prev[0] { ctx.active = 0 }
+	// Sol tık bırakıldıysa ve hâlâ active varsa temizle (item_behavior kaçırsa güvenlik ağı)
+	if !ctx.input.mouse_down[0] && ctx.active != 0 {
+		ctx.active = 0
+	}
 }
 
 end_frame :: proc(ctx: ^Context) {
@@ -231,8 +226,10 @@ draw_rect :: proc(ctx: ^Context, r: Rect, col: Color) {
 }
 
 solid_uv :: proc() -> Vec2 {
-	return {f32((SOLID_CELL % ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2) / ATLAS_W,
-	        f32((SOLID_CELL / ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2) / ATLAS_H}
+	return {
+		f32((SOLID_CELL % ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2) / ATLAS_W,
+		f32((SOLID_CELL / ATLAS_COLS) * ATLAS_CELL + ATLAS_CELL / 2) / ATLAS_H,
+	}
 }
 
 draw_line :: proc(ctx: ^Context, a, b: Vec2, thickness: f32, col: Color) {
